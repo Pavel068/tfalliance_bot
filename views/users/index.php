@@ -31,15 +31,20 @@ $this->params['breadcrumbs'][] = $this->title;
             'id',
             'name',
             'email:email',
-            'bot_chat_id',
-            'tg_username',
+            [
+                'attribute' => 'tg_username',
+                'format' => 'raw',
+                'value' => function ($model) {
+                    return Html::a(Html::encode('@' . $model['tg_username']),'https://t.me/' . $model['tg_username'], ['target' => '_blank']);
+                }
+            ],
             'is_admin',
             'is_manager',
             [
                 'class' => ActionColumn::className(),
                 'urlCreator' => function ($action, Users $model, $key, $index, $column) {
                     return Url::toRoute([$action, 'id' => $model->id]);
-                 }
+                }
             ],
         ],
     ]); ?>

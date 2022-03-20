@@ -29,6 +29,12 @@ $this->params['breadcrumbs'][] = $this->title;
         'columns' => [
 
             'id',
+            [
+                'attribute' => 'user_id',
+                'value' => function ($model) {
+                    return \app\models\Users::find()->where(['id' => $model->user_id])->one()->name;
+                }
+            ],
             'name',
             'message:ntext',
             'keywords',
@@ -38,7 +44,7 @@ $this->params['breadcrumbs'][] = $this->title;
                 'class' => ActionColumn::className(),
                 'urlCreator' => function ($action, Topics $model, $key, $index, $column) {
                     return Url::toRoute([$action, 'id' => $model->id]);
-                 }
+                }
             ],
         ],
     ]); ?>

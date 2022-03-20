@@ -9,7 +9,7 @@ use Yii;
  *
  * @property int $id
  * @property string|null $name
- * @property string $email
+ * @property string|null $email
  * @property string|null $password
  * @property int|null $bot_chat_id
  * @property string|null $tg_username
@@ -38,7 +38,6 @@ class Users extends \yii\db\ActiveRecord
     public function rules()
     {
         return [
-            [['email'], 'required'],
             [['bot_chat_id', 'is_admin', 'is_manager'], 'integer'],
             [['created_at', 'updated_at'], 'safe'],
             [['name', 'email', 'password', 'tg_username', 'access_token'], 'string', 'max' => 255],

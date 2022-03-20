@@ -30,14 +30,20 @@ $this->params['breadcrumbs'][] = $this->title;
 
             'id',
             'user_id',
-            'topic_id',
+            [
+                'attribute' => 'topic_id',
+                'value' => function ($model) {
+                    $topic = \app\models\Topics::find()->where(['id' => $model->topic_id])->one();
+                    return $topic ? $topic->name : null;
+                }
+            ],
             'bot_message_id',
             'message:ntext',
             [
                 'class' => ActionColumn::className(),
                 'urlCreator' => function ($action, TopicReplies $model, $key, $index, $column) {
                     return Url::toRoute([$action, 'id' => $model->id]);
-                 }
+                }
             ],
         ],
     ]); ?>
