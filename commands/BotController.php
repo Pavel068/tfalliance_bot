@@ -2,6 +2,7 @@
 
 namespace app\commands;
 
+use app\models\TopicReplies;
 use app\models\Topics;
 use app\models\Users;
 use yii\console\Controller;
@@ -82,7 +83,7 @@ class BotController extends Controller
         });
 
         $bot->onCommand('help', function (Message $message) use ($bot) {
-            $message->reply('Список команд: \start, \help, \create, \topics');
+            $message->reply('Список команд: \start - Начало работы, \help - Помощник, \create - Создать топик, \topics - Просмотр своих топиков, \posts - Просмотр топиков (у пользователя), \replies - Просмотр ответов на топики (для менеджера)');
         });
 
         $bot->onCommand('create', function (Message $message) use ($bot) {
@@ -109,80 +110,121 @@ class BotController extends Controller
             }
         });
 
-        $bot->onCommand('replies', function (Message $message) use ($bot) {
+        $bot->onCommand('posts', function (Message $message) use ($bot) {
+            $posts = Topics::find()->orderBy('created_at DESC')->all();
+            foreach ($posts as $post) {
+                $msg = "
+                ==|{$post->bot_message_id}|==
+                
+                <b>{$post->name}</b>
+                
+                {$post->message}
+                
+                Ключевые слова: <i>{$post->keywords}</i>
+                ";
+                $bot->sendMessage($message->chat->id, $msg);
+            }
+        });
 
+        $bot->onCommand('replies', function (Message $message) use ($bot) {
+            $replies = TopicReplies::find()->all();
+            foreach ($replies as $reply) {
+                $bot->sendMessage($message->chat->id, $reply->message);
+            }
         });
 
         $bot->onMessage(function (Message $message) use ($bot) {
             if ($message->text[0] != '/') {
-                $currentAction = $this->getBotAction($message->chat->id);
-                switch ($currentAction) {
-                    case 'create-topic:name':
-                        $this->setBotAction($message->chat->id, 'create-topic:message', json_encode(['name' => $message->text]));
-                        $bot->sendMessage($message->chat->id, 'Введите текст сообщения');
-                        break;
-                    case 'create-topic:message':
-                        $this->setBotAction($message->chat->id, 'create-topic:keywords', json_encode(['message' => $message->text]));
-                        $bot->sendMessage($message->chat->id, 'Введите ключевые слова (через запятую)');
-                        break;
-                    case 'create-topic:keywords':
-                        $this->setBotAction($message->chat->id, 'create-topic:finish', json_encode(['keywords' => $message->text]));
-
-                        // Create topic
+                // Reply
+                if ($message->reply_to_message && $message->reply_to_message->text) {
+                    preg_match_all('/==|[0-9]+|==/', $message->reply_to_message->text, $matches);
+                    if ($matches && $matches[0][1]) {
+                        $bot_message_id = $matches[0][1];
+                        $topic = Topics::find()->where(['bot_message_id' => $bot_message_id])->one();
                         $user = Users::find()->where(['bot_chat_id' => $message->from->id])->one();
-
-                        if ($user) {
-                            $topic = new Topics();
-                            $topic->load(array_merge($this->getBotData($message->chat->id), [
+                        if ($topic && $user) {
+                            $reply = new TopicReplies();
+                            $reply->load([
                                 'user_id' => $user->id,
-                                'bot_message_id' => $message->message_id
-                            ]), '');
-                            $topic->save();
-                        }
+                                'topic_id' => $topic->id,
+                                'bot_message_id' => $message->message_id,
+                                'message' => $message->text
+                            ], '');
+                            $reply->save();
 
-                        $this->setBotAction($message->chat->id, null);
-                        $bot->sendMessage($message->chat->id, 'Топик успешно создан!');
-                        break;
-                    case 'signup:role':
-                        if ($message->text == 1) {
-                            $this->setBotAction($message->chat->id, 'signup:credentials');
-                            $bot->sendMessage($message->chat->id, 'Введите ваше email и пароль через пробел. Пример: user@test.com 123456');
-                        } else if ($message->text == 2) {
+                            $bot->sendMessage($message->chat->id, 'Ваш отклик принят!');
+                        }
+                    }
+                } else { // Dialog
+                    $currentAction = $this->getBotAction($message->chat->id);
+                    switch ($currentAction) {
+                        case 'create-topic:name':
+                            $this->setBotAction($message->chat->id, 'create-topic:message', json_encode(['name' => $message->text]));
+                            $bot->sendMessage($message->chat->id, 'Введите текст сообщения');
+                            break;
+                        case 'create-topic:message':
+                            $this->setBotAction($message->chat->id, 'create-topic:keywords', json_encode(['message' => $message->text]));
+                            $bot->sendMessage($message->chat->id, 'Введите ключевые слова (через запятую)');
+                            break;
+                        case 'create-topic:keywords':
+                            $this->setBotAction($message->chat->id, 'create-topic:finish', json_encode(['keywords' => $message->text]));
+
+                            // Create topic
+                            $user = Users::find()->where(['bot_chat_id' => $message->from->id])->one();
+
+                            if ($user) {
+                                $topic = new Topics();
+                                $topic->load(array_merge($this->getBotData($message->chat->id), [
+                                    'user_id' => $user->id,
+                                    'bot_message_id' => $message->message_id
+                                ]), '');
+                                $topic->save();
+                            }
+
+                            $this->setBotAction($message->chat->id, null);
+                            $bot->sendMessage($message->chat->id, 'Топик успешно создан!');
+                            break;
+                        case 'signup:role':
+                            if ($message->text == 1) {
+                                $this->setBotAction($message->chat->id, 'signup:credentials');
+                                $bot->sendMessage($message->chat->id, 'Введите ваше email и пароль через пробел. Пример: user@test.com 123456');
+                            } else if ($message->text == 2) {
+                                $user = new Users();
+                                $user->load([
+                                    'name' => $message->from->first_name . ' ' . $message->from->last_name,
+                                    'bot_chat_id' => $message->from->id,
+                                    'tg_username' => $message->from->username,
+                                    'is_admin' => 0,
+                                    'is_manager' => 0
+                                ]);
+                                $user->save();
+                                $this->setBotAction($message->chat->id, null);
+
+                                $bot->sendMessage($message->chat->id, 'Вы успешно зарегистрированы!');
+                            } else {
+                                $bot->sendMessage($message->chat->id, 'Кто ты, воин?');
+                            }
+                            break;
+                        case 'signup:credentials':
+                            $credentials = explode(' ', $message->text);
                             $user = new Users();
                             $user->load([
                                 'name' => $message->from->first_name . ' ' . $message->from->last_name,
+                                'email' => $credentials[0],
+                                'password' => $credentials[1],
                                 'bot_chat_id' => $message->from->id,
                                 'tg_username' => $message->from->username,
                                 'is_admin' => 0,
-                                'is_manager' => 0
-                            ]);
+                                'is_manager' => 1
+                            ], '');
                             $user->save();
                             $this->setBotAction($message->chat->id, null);
 
-                            $bot->sendMessage($message->chat->id, 'Вы успешно зарегистрированы!');
-                        } else {
-                            $bot->sendMessage($message->chat->id, 'Кто ты, воин?');
-                        }
-                        break;
-                    case 'signup:credentials':
-                        $credentials = explode(' ', $message->text);
-                        $user = new Users();
-                        $user->load([
-                            'name' => $message->from->first_name . ' ' . $message->from->last_name,
-                            'email' => $credentials[0],
-                            'password' => $credentials[1],
-                            'bot_chat_id' => $message->from->id,
-                            'tg_username' => $message->from->username,
-                            'is_admin' => 0,
-                            'is_manager' => 1
-                        ], '');
-                        $user->save();
-                        $this->setBotAction($message->chat->id, null);
-
-                        $bot->sendMessage($message->chat->id, 'Вы успешно зарегистрированы! Вам доступен личный кабинет в веб-интерфейсе: http://127.0.0.1:8080');
-                        break;
-                    default:
-                        break;
+                            $bot->sendMessage($message->chat->id, 'Вы успешно зарегистрированы! Вам доступен личный кабинет в веб-интерфейсе: http://127.0.0.1:8080');
+                            break;
+                        default:
+                            break;
+                    }
                 }
             }
         });
