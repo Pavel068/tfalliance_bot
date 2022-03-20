@@ -127,9 +127,18 @@ class BotService
         });
 
         $bot->onCommand('replies', function (Message $message) use ($bot) {
-            $replies = TopicReplies::find()->with(['user'])->asArray()->all();
+            $user = Users::find()->where(['bot_chat_id' => $message->chat->id])->one();
+            $replies = TopicReplies::find()
+                ->with(['user', 'topic'])
+                ->join('INNER JOIN', 'topics', 'topics.id = topic_replies.topic_id')
+                ->where(['topics.user_id' => $user->id])
+                ->asArray()
+                ->all();
+
             foreach ($replies as $reply) {
-                $msg = "{$reply['message']}
+                $msg = "Ответ на топик: {$reply['topic']['name']}
+                
+{$reply['message']}
                 
 @{$reply['user']['tg_username']}
                 ";
